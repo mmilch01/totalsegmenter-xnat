@@ -1,0 +1,18 @@
+steps:
+  - step_title: 1. Make input and output folders
+    step_command: mkdir -p {job_workdir}/scan{job_scan_id}/secondary
+
+  - step_title: 2. Convert structural scan to NIFTI
+    step_command: micromamba run -n base python {g_pymipl_dir}/test_rt-utils.py {job_struct_path} {job_workdir}/scan{job_scan_id}/ct
+
+  - step_title: 3. Total segmenter lesion segmentation
+    step_command: time micromamba run -p {g_env_repo_dir} TotalSegmentator -i {job_workdir}/scan{job_scan_id}/ct_struct.nii.gz -o {job_workdir}/scan{job_scan_id}/totalseg_liver_lesions --task liver_lesions --device cpu
+
+  - step_title: 4. Convert the tumor mask to RTSTRUCT
+    step_command: micromamba run -n base python {g_pymipl_dir}/nifti2rtss.py --structure_labels Tumor --segmentation_intensities 1 --structure_set_label Totalseg-tumor --series_description "Multi-organ abdominal CT segmentation" --series_number {job_numeric_scan_id}102 {job_workdir}/scan{job_scan_id}/totalseg_liver_lesions/liver_lesions.nii.gz {job_struct_path} {job_workdir}/scan{job_scan_id}/secondary/totalseg_liver_lesions.dcm
+
+  - step_title: 5. Upload scan-level RTSTRUCT resource
+    step_command: micromamba run -n base python {g_pymipl_dir}/xnat_workflow/sync-resource-with-xnat.py --level scan --project {g_project} --subject {job_subject} --experiment {job_exp_label} --scan {job_numeric_scan_id}102 --local_resource {job_workdir}/scan{job_scan_id}/secondary --remote_resource secondary --create_hierarchy 1 --xsiType xnat:rtImageScanData --pullDataFromHeaders 1
+
+  - step_title: 6. Upload outputs to the session resource
+    step_command: micromamba run -n base python {g_pymipl_dir}/xnat_workflow/sync-resource-with-xnat.py --level experiment --project {g_project} --subject {job_subject} --experiment {job_exp_label} --local_resource {job_workdir} --remote_resource {g_workflow_id} --create_hierarchy 1
